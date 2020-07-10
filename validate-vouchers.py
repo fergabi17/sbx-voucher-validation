@@ -38,12 +38,12 @@ UK_code_patterns = {
 
 PT_code_patterns = {
     "orcb": "\n1\n0\n0\n0\n0\n0\n",
-    "VOT_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{6:10}\n[A-Z\n]{6}",
-    "AW_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{6:10}\n[A-Z\n]{6}",
-    "voucher_number": "\n[0-9]{19}\n",
-    "voucher_number_format": "\n[0-9]{19}\n",
-    "voucher_number_light": "\n[0-9]{12}\n",
-    "voucher_key": "\n[0-9]{6}\n"
+    "VOT_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{6}[A-Z\n]{6}",
+    "AW_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{6}[A-Z\n]{6}",
+    "voucher_number": "\n[0-9]{9}\n",
+    "voucher_number_format": "\nhttps://odissei.as/[A-z0-9]+\n",
+    "voucher_number_light": "\n[0-9]{10}\n",
+    "voucher_key": "\n[0-9]{4}\n"
 }
 
 
@@ -133,7 +133,7 @@ def validate_data(voucher_data):
             return False
 
     if voucher_data["country"] == "PIM":
-        val_list = [validate_orcb(), validate_vot_aw(), validate_vn_format(
+        val_list = [validate_vot_aw(), validate_vn_format(
         ), validate_vn_light(), validate_voucher_key(), validate_file_name()]
         if False in val_list:
             return False
@@ -147,12 +147,6 @@ All 'validate' functions bellow validate specificities for each type of code.
 All of them are called in the validate_data() according to the country.
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 """
-def validate_orcb():
-    orcb_code = voucher_data["orcb"]
-    if orcb_code == "000001" or orcb_code == "1":
-        return True
-    return False
-
 
 def validate_vot_aw():
     vot_code = re.findall(
@@ -207,6 +201,7 @@ files_in_dir = os.listdir(folder_path)
 
 # Main loop in pdf files found
 if len(files_in_dir) >= 1:
+
     for pdf_file in files_in_dir:
         if pdf_file.endswith('.pdf'):
 
@@ -219,9 +214,14 @@ if len(files_in_dir) >= 1:
                     key, code_patterns[key])
 
             voucher_data["validation"] = validate_data(voucher_data)
-            voucher_list.append(voucher_data.copy())
 
-            # print(voucher_text)
+            # Make sure numbers will be displayed correctly in excel
+            for key in voucher_data:
+                voucher_data[key]  = f"\'{voucher_data[key]}"
+            
+            voucher_list.append(voucher_data.copy())
 
 if len(voucher_list) >= 1:
     create_csv()
+
+easygui.msgbox(f"Process Finished! Checked {len(voucher_list)} voucher(s).")
