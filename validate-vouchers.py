@@ -13,154 +13,215 @@ import os
 import csv
 
 voucher_list = []
+vertical_codes = ["orcb", "VOT_voucher_component_code",
+                  "AW_voucher_component_code"]
 
-vertical_code_patterns = {
+PIM_code_patterns = {
     "orcb": "\n1\n0\n0\n0\n0\n0\n",
     "VOT_voucher_component_code": "V\n[0-9\n]+\n",
-    "AW_voucher_component_code": "V\n-\n[0-9]{1,2}\n-\n[0-9\n]+-\n[A-Z\n]{4}"
-}
-
-horizontal_code_patterns = {
+    "AW_voucher_component_code": "V\n-\n[0-9]{1,2}\n-\n[0-9\n]+-\n[A-Z\n]{4}",
     "voucher_number": "\n[0-9]{12}\n",
     "voucher_number_format": "\n[0-9]{3} [0-9]{3} [0-9]{3} [0-9]{3}\n",
     "voucher_number_light": "\n[0-9]{9}\n",
     "voucher_key": "\n[0-9]{3}\n"
 }
 
+UK_code_patterns = {
+    "orcb": "\n1\n0\n0\n0\n0\n0\n",
+    "VOT_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{10}[A-Z\n]{6}",
+    "AW_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{10}[A-Z\n]{6}",
+    "voucher_number": "\n[0-9]{19}\n",
+    "voucher_number_format": "\n[0-9]{19}\n",
+    "voucher_number_light": "\n[0-9]{12}\n",
+    "voucher_key": "\n[0-9]{6}\n"
+}
 
-def get_voucher_code(code_name, code_pattern, code_position):
+PT_code_patterns = {
+    "orcb": "\n1\n0\n0\n0\n0\n0\n",
+    "VOT_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{6:10}\n[A-Z\n]{6}",
+    "AW_voucher_component_code": "V\n2\n1\n[0-9\n]{4}[A-Z]\n[0-9\n]{6:10}\n[A-Z\n]{6}",
+    "voucher_number": "\n[0-9]{19}\n",
+    "voucher_number_format": "\n[0-9]{19}\n",
+    "voucher_number_light": "\n[0-9]{12}\n",
+    "voucher_key": "\n[0-9]{6}\n"
+}
+
+
+def get_voucher_code(code_name, code_pattern):
+    """
+    Uses a regex pattern to find the code in the voucher_text string
+    and returns it.
+    """
+
     code_list = re.findall(code_pattern, voucher_text)
-    code = ""
-    if len(code_list) == 1:
+    if len(code_list) >= 1:
         code = code_list[0].replace("\n", "")
-        if code_position == "vertical":
+        if code_name in vertical_codes:
             # Vertical codes come inversed
             code = code[len(code)::-1]
-    elif code_name == "orcb" and len(code_list) == 0:
-        code_list = re.findall("\n\n1\n\n", voucher_text)
-        if len(code_list) == 1:
-            code = "1"
-    else:
-        code = "not found"
-    all_voucher_codes[code_name] = code
+        return code
+    if code_name == "orcb" and code_pattern != "\n\n1\n\n":
+        return get_voucher_code(code_name, "\n\n1\n\n")
+
+    return "not found"
 
 
 def create_csv():
+    """
+    Creates a csv from the voucher_list. This is a list of dictionaries containing the voucher codes.
+    The csv is saved in the same location where the pdf files were found, with a timestamp.
+    """
+
     time_stamp = re.findall("[0-9]+", str(datetime.timestamp(datetime.now())))
     csv_path = folder_path + "/vouchers_" + time_stamp[0] + ".csv"
+
     with open(csv_path, 'w', newline='') as file:
         fieldnames = []
-        for key in all_voucher_codes:
+        for key in voucher_data:
             fieldnames.append(key)
 
         writer = csv.DictWriter(file, fieldnames=fieldnames)
-
         writer.writeheader()
+
         for voucher in voucher_list:
             writer.writerow(voucher)
-        print("CSV created in: " + csv_path)
 
 
-def print_voucher_codes():
-    codes_string = "\n"
-    for key in all_voucher_codes:
-        codes_string += key + ": " + all_voucher_codes[key] + "\n"
-    print(codes_string)
+def get_voucher_data(pdf_file):
+    """
+    Returns a voucher object extracting information from the pdf name.
+    """
+
+    box_country = pdf_file.split("_")[1][:2]
+    if str(box_country) != "UK" and str(box_country) != "PT":
+        box_country = "PIM"
+
+    return {
+        "file_name": pdf_file,
+        "country": box_country
+    }
 
 
-def validate_data(all_voucher_codes):
-    val_list = []
-    validation = True
-    val_list.append(validate_orcb(all_voucher_codes["orcb"]))
-    val_list.append(validate_vot_aw(all_voucher_codes["VOT_voucher_component_code"], all_voucher_codes["AW_voucher_component_code"]))
-    val_list.append(validate_vn_format(all_voucher_codes["voucher_number"], all_voucher_codes["voucher_number_format"]))
-    val_list.append(validate_vn_light(all_voucher_codes["voucher_number"], all_voucher_codes["voucher_number_light"]))
-    val_list.append(validate_voucher_key(all_voucher_codes["voucher_number"], all_voucher_codes["voucher_key"]))
-    val_list.append(validate_file_name(all_voucher_codes["file_name"], all_voucher_codes["VOT_voucher_component_code"]))
-    if False in val_list:
-        validation = False
-    all_voucher_codes["validation"] = validation
+def extract_text(pdf_file):
+    """
+    Returns all text from a pdf file in a string using PDF miner.
+    """
+
+    output_string = StringIO()
+    with open(folder_path + "/" + pdf_file, 'rb') as in_file:
+        parser = PDFParser(in_file)
+        doc = PDFDocument(parser)
+        rsrcmgr = PDFResourceManager()
+        device = TextConverter(
+            rsrcmgr, output_string, laparams=LAParams())
+        interpreter = PDFPageInterpreter(rsrcmgr, device)
+        for page in PDFPage.create_pages(doc):
+            interpreter.process_page(page)
+
+    return output_string.getvalue()
 
 
-def validate_orcb(orcb_code):
+def validate_data(voucher_data):
+    """
+    Checks if all codes were found per voucher.
+    It also validates codes calling different functions.
+    Only returns True if all the information is validated.
+    """
+
+    for code in voucher_data:
+        if voucher_data[code] == "not found":
+            return False
+
+    if voucher_data["country"] == "PIM":
+        val_list = [validate_orcb(), validate_vot_aw(), validate_vn_format(
+        ), validate_vn_light(), validate_voucher_key(), validate_file_name()]
+        if False in val_list:
+            return False
+
+    return True
+
+
+"""
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+All 'validate' functions bellow validate specificities for each type of code.
+All of them are called in the validate_data() according to the country.
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+"""
+def validate_orcb():
+    orcb_code = voucher_data["orcb"]
     if orcb_code == "000001" or orcb_code == "1":
         return True
     return False
 
 
-def validate_vot_aw(vot_code, aw_code):
-    vot_code = re.findall("[0-9]+", vot_code)[0]
-    aw_code = re.findall("[0-9]{3,}", aw_code)[0]
+def validate_vot_aw():
+    vot_code = re.findall(
+        "[0-9]+", voucher_data["VOT_voucher_component_code"])[0]
+    aw_code = re.findall(
+        "[0-9]{3,}", voucher_data["AW_voucher_component_code"])[0]
     if vot_code == aw_code:
         return True
     return False
 
 
-def validate_vn_format(vn_code, vn_format_code):
-    vn_format_code = vn_format_code.replace(" ", "")
+def validate_vn_format():
+    vn_code = voucher_data["voucher_number"]
+    vn_format_code = voucher_data["voucher_number_format"].replace(" ", "")
     if vn_format_code == vn_code:
         return True
     return False
 
 
-def validate_vn_light(vn_code, vn_light_code):
+def validate_vn_light():
+    vn_code = voucher_data["voucher_number"]
+    vn_light_code = voucher_data["voucher_number_light"]
     if vn_code[0:9] == vn_light_code:
         return True
     return False
 
 
-def validate_voucher_key(vn_code, voucher_key_code):
+def validate_voucher_key():
+    vn_code = voucher_data["voucher_number"]
+    voucher_key_code = voucher_data["voucher_key"]
     if vn_code[9:12] == voucher_key_code:
         return True
     return False
 
 
-def validate_file_name(file_name, vot_code):
-    file_name_pim = re.findall("[0-9]+", file_name)[1]
-    vot_code_pim = vot_code.replace("V", "")
+def validate_file_name():
+    file_name_pim = re.findall("[0-9]+", voucher_data["file_name"])[1]
+    vot_code_pim = voucher_data["VOT_voucher_component_code"].replace("V", "")
     if file_name_pim == vot_code_pim:
         return True
     return False
 
 
+"""
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+START THE PROCESS
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+"""
+
 folder_path = easygui.diropenbox()
 files_in_dir = os.listdir(folder_path)
-
-print("\n• Those are the files in this directory: " + str(files_in_dir) + "\n")
 
 # Main loop in pdf files found
 if len(files_in_dir) >= 1:
     for pdf_file in files_in_dir:
         if pdf_file.endswith('.pdf'):
-            all_voucher_codes = {
-                "file_name": pdf_file
-            }
 
-            # Extracting text using PDF miner
-            output_string = StringIO()
-            with open(folder_path + "/" + pdf_file, 'rb') as in_file:
-                parser = PDFParser(in_file)
-                doc = PDFDocument(parser)
-                rsrcmgr = PDFResourceManager()
-                device = TextConverter(rsrcmgr, output_string, laparams=LAParams())
-                interpreter = PDFPageInterpreter(rsrcmgr, device)
-                for page in PDFPage.create_pages(doc):
-                    interpreter.process_page(page)
+            voucher_data = get_voucher_data(pdf_file)
+            voucher_text = extract_text(pdf_file)
+            code_patterns = eval(voucher_data["country"] + "_code_patterns")
 
-            voucher_text = output_string.getvalue()
+            for key in code_patterns:
+                voucher_data[key] = get_voucher_code(
+                    key, code_patterns[key])
 
-            for key in vertical_code_patterns:
-                get_voucher_code(key, vertical_code_patterns[key], "vertical")
+            voucher_data["validation"] = validate_data(voucher_data)
+            voucher_list.append(voucher_data.copy())
 
-            for key in horizontal_code_patterns:
-                get_voucher_code(key, horizontal_code_patterns[key], "horizontal")
+            # print(voucher_text)
 
-            validate_data(all_voucher_codes)
-            voucher_list.append(all_voucher_codes.copy())
-
-            #print(voucher_text)
-            #print_voucher_codes()
-
-#print(voucher_list)
-
-create_csv()
+if len(voucher_list) >= 1:
+    create_csv()
