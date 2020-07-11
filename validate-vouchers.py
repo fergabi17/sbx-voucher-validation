@@ -8,7 +8,9 @@ from pdfminer.pdfparser import PDFParser
 from datetime import datetime
 
 import re
-import easygui
+from tkinter import Tk
+from tkinter.filedialog import askdirectory
+from tkinter import messagebox
 import os
 import csv
 
@@ -196,7 +198,7 @@ START THE PROCESS
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 """
 
-folder_path = easygui.diropenbox()
+folder_path = askdirectory(title='Select Folder')
 files_in_dir = os.listdir(folder_path)
 
 # Main loop in pdf files found
@@ -224,4 +226,4 @@ if len(files_in_dir) >= 1:
 if len(voucher_list) >= 1:
     create_csv()
 
-easygui.msgbox(f"Process Finished! Checked {len(voucher_list)} voucher(s).")
+messagebox.showinfo("Finished", f"Process Finished! Checked {len(voucher_list)} voucher(s).")
