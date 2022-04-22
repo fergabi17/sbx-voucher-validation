@@ -23,7 +23,7 @@ PyInstaller==3.6
 pylint==2.5.3
 PyMuPDF==1.17.2
 pynsist==2.5.1
-PyPDF2==1.26.0
+PyPDF2==1.27.5
 requests==2.24.0
 requests-download==0.1.2
 six==1.15.0
